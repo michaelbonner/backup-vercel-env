@@ -1,0 +1,20 @@
+{
+  "name": "vercel-backup",
+  "module": "backupVercelEnv.js",
+  "type": "module",
+  "private": true,
+  "devDependencies": {
+    "@types/bun": "latest"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "@types/fs-extra": "^11.0.4",
+    "axios": "^1.9.0",
+    "fs-extra": "^11.3.0"
+  },
+  "scripts": {
+    "backup": "bun backupVercelEnv.mts"
+  }
+}
