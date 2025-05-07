@@ -1,35 +1,8 @@
-#!/usr/bin/env node
+#!/usr/bin/env bun
 
-import axios from "axios";
+import { Vercel } from "@vercel/sdk";
 import fs from "fs-extra";
 import path from "path";
-
-type VercelProject = {
-  id: string;
-  name: string;
-  slug: string;
-  teamId: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type VercelEnv = {
-  id: string;
-  key: string;
-  value: string;
-  createdAt: string;
-  updatedAt: string;
-};
-
-type VercelEnvResponse = {
-  envs: VercelEnv[];
-};
-
-type VercelTeam = {
-  id: string;
-  name: string;
-  slug: string;
-};
 
 // Load token
 const token = process.env.VERCEL_TOKEN;
@@ -38,48 +11,28 @@ if (!token) {
   process.exit(1);
 }
 
-const api = axios.create({
-  baseURL: "https://api.vercel.com",
-  headers: { Authorization: `Bearer ${token}` },
+const vercel = new Vercel({
+  bearerToken: token,
 });
 
 async function getTeams() {
-  // Vercel v2 endpoint for listing teams
-  const res: { data: { teams: VercelTeam[] } } = await api.get("/v2/teams", {
-    params: { limit: 100 },
-  });
-  return res.data.teams || [];
+  return (await vercel.teams.getTeams({})).teams;
 }
 
 async function listProjects(teamId: string | null) {
   if (!teamId) return [];
 
-  let all = [];
-  let until = null;
-
-  do {
-    const res: {
-      data: { projects: VercelProject[]; pagination: { until: string | null } };
-    } = await api.get("/v9/projects", {
-      params: {
-        limit: 100,
-        until,
-        ...(teamId ? { teamId } : {}),
-      },
-    });
-    all.push(...res.data.projects);
-    until = res.data.pagination.until;
-  } while (until);
-  return all;
+  return (
+    await vercel.projects.getProjects({
+      teamId,
+      limit: "200",
+    })
+  ).projects;
 }
 
 async function backup() {
   // 1) Build list of scopes: personal + each team
-  const scopes = [];
-  const teams = await getTeams();
-  for (const t of teams) {
-    scopes.push({ id: t.id, name: t.slug });
-  }
+  const scopes = await getTeams();
 
   // 2) Make timestamped root folder
   const timestamp = new Date().toISOString().replace(/:/g, "-").split(".")[0];
@@ -95,26 +48,32 @@ async function backup() {
     const projectList = await listProjects(scope.id);
     if (!projectList.length) continue;
 
-    const scopeDir = path.join(root, scope.name);
+    const scopeDir = path.join(root, scope.slug);
     await fs.ensureDir(scopeDir);
 
-    console.log(
-      `Backing up ${projectList.length} projects for "${scope.name}"…`
+    console.info(
+      `Backing up ${projectList.length} projects for "${scope.slug}"…`
     );
 
     for (const project of projectList) {
-      const envRes = await api.get<VercelEnvResponse>(
-        `/v9/projects/${project.id}/env`,
-        scope.id ? { params: { teamId: scope.id } } : {}
-      );
-      const envs = envRes.data.envs || [];
+      const envRes = await vercel.projects.filterProjectEnvs({
+        idOrName: project.id,
+        teamId: scope.id,
+      });
+
+      // if the envRes doesn't have envs, skip
+      if (!("envs" in envRes)) continue;
+
+      const envs = envRes.envs;
+
       const out = path.join(scopeDir, `${project.name}.json`);
-      await fs.writeJson(out, envs, { spaces: 2 });
-      console.log(`  • ${project.name} → ${envs.length} vars`);
+
+      await fs.writeJson(out, envRes.envs, { spaces: 2 });
+      console.info(`  • ${project.name} → ${envs.length} vars`);
     }
   }
 
-  console.log(`✅ Backup complete: ${root}`);
+  console.info(`✅ Backup complete: ${root}`);
 }
 
 backup().catch((err) => {
