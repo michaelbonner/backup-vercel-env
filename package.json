@@ -7,11 +7,11 @@
     "@types/bun": "latest"
   },
   "peerDependencies": {
-    "typescript": "^5"
+    "typescript": "^5.8.3"
   },
   "dependencies": {
     "@types/fs-extra": "^11.0.4",
-    "@vercel/sdk": "^1.6.11",
+    "@vercel/sdk": "^1.10.0",
     "fs-extra": "^11.3.0"
   },
   "scripts": {
